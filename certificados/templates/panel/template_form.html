@@ -1,0 +1,122 @@
+{% extends "panel/base.html" %}
+
+{% block title %}{% if template %}Editar{% else %}Crear{% endif %} template{% endblock %}
+{% block page_title %}{% if template %}Editar template{% else %}Nuevo template{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'panel_templates' %}" class="btn btn-secondary btn-sm">Volver</a>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+    <div class="card">
+        <div class="card-title" style="margin-bottom:20px;">Configuracion</div>
+        <form method="post" enctype="multipart/form-data" id="templateForm">
+            {% csrf_token %}
+
+            {% if not template %}
+            <div class="form-group">
+                <label>Evento</label>
+                <select name="event" required>
+                    <option value="">Seleccionar evento...</option>
+                    {% for event in events_available %}
+                    <option value="{{ event.pk }}">{{ event.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            <div class="form-group">
+                <label>PDF del certificado</label>
+                <input type="file" name="pdf" accept=".pdf" {% if not template %}required{% endif %}>
+                {% if template %}
+                <div class="form-help">Archivo actual: {{ template.pdf.name }} - Subir uno nuevo para reemplazar</div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                <label>Modo</label>
+                <select name="mode">
+                    <option value="coords" {% if template.mode == 'coords' or not template %}selected{% endif %}>Escribir por coordenadas</option>
+                    <option value="field" {% if template.mode == 'field' %}selected{% endif %}>Campo rellenable (PDF Form Field)</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Pagina (desde 0)</label>
+                    <input type="number" name="page_number" value="{{ template.page_number|default:'0' }}" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Tamano de fuente</label>
+                    <input type="number" name="font_size" value="{{ template.font_size|default:'28' }}" step="0.5" min="1">
+                </div>
+            </div>
+
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label>X (horizontal)</label>
+                    <input type="number" name="x" id="inputX" value="{{ template.x|default:'100' }}" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Y (vertical)</label>
+                    <input type="number" name="y" id="inputY" value="{{ template.y|default:'300' }}" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Alineacion</label>
+                    <select name="align">
+                        <option value="center" {% if template.align == 'center' or not template %}selected{% endif %}>Centro</option>
+                        <option value="left" {% if template.align == 'left' %}selected{% endif %}>Izquierda</option>
+                        <option value="right" {% if template.align == 'right' %}selected{% endif %}>Derecha</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Nombre del campo (modo field)</label>
+                <input type="text" name="field_name" value="{{ template.field_name|default:'full_name' }}">
+            </div>
+
+            <div style="display:flex;gap:12px;margin-top:8px;">
+                <button type="submit" class="btn btn-primary">{% if template %}Guardar{% else %}Crear template{% endif %}</button>
+                {% if template %}
+                <button type="button" class="btn btn-secondary" onclick="updatePreview()">Actualizar vista previa</button>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-title" style="margin-bottom:20px;">Vista previa</div>
+        <div class="preview-frame" id="previewFrame">
+            {% if template %}
+                <iframe src="{% url 'panel_template_preview' pk=template.pk %}?name=Juan+Perez" style="width:100%;height:500px;border:none;border-radius:4px;"></iframe>
+            {% else %}
+                <div class="placeholder">La vista previa estara disponible despues de crear el template</div>
+            {% endif %}
+        </div>
+        {% if template %}
+        <div style="margin-top:16px;">
+            <div class="form-group">
+                <label>Nombre de prueba</label>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="previewName" value="Juan Perez" style="flex:1;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="updatePreview()">Probar</button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if template %}
+<script>
+function updatePreview() {
+    var name = document.getElementById('previewName').value;
+    var url = "{% url 'panel_template_preview' pk=template.pk %}?name=" + encodeURIComponent(name);
+    document.getElementById('previewFrame').innerHTML =
+        '<iframe src="' + url + '" style="width:100%;height:500px;border:none;border-radius:4px;"></iframe>';
+}
+</script>
+{% endif %}
+{% endblock %}

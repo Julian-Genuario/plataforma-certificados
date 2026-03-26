@@ -2,191 +2,304 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>{{ event.name }}</title>
+    <title>{{ event.name }} | Certificado</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #0f3d2e, #1c6b4a);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        .card {
-            background: white;
-            padding: 40px;
-            border-radius: 16px;
-            width: 100%;
-            max-width: 450px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0a0a0a;
+            overflow: hidden;
             position: relative;
         }
 
+        /* Animated gradient background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(16, 185, 129, 0.12) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 50% 80%, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
+            animation: bgMove 20s ease-in-out infinite alternate;
+            z-index: 0;
+        }
+
+        @keyframes bgMove {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            100% { transform: translate(-5%, -5%) rotate(3deg); }
+        }
+
+        /* Floating particles */
+        .particles {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(16, 185, 129, 0.3);
+            border-radius: 50%;
+            animation: float linear infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+        }
+
+        /* Card */
+        .card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 480px;
+            margin: 20px;
+        }
+
+        .card-inner {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 48px 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Subtle shimmer on card border */
+        .card-inner::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.5), transparent);
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #34d399;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+        }
+
+        .badge-dot {
+            width: 6px;
+            height: 6px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
         h1 {
-            margin: 0 0 15px 0;
-            font-size: 26px;
-            color: #0f3d2e;
+            font-size: 28px;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.2;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
         }
 
         .subtitle {
             font-size: 15px;
-            color: #555;
-            margin-bottom: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            line-height: 1.5;
+            margin-bottom: 36px;
         }
 
-        .instructions {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 25px;
+        /* Form */
+        .form-group {
+            margin-bottom: 24px;
         }
 
-        label {
-            font-weight: 600;
+        .form-group label {
             display: block;
-            margin-bottom: 8px;
-        }
-
-        input {
-            width: 100%;
-            padding: 14px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            font-size: 16px;
-            margin-bottom: 20px;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: #1c6b4a;
-        }
-
-        .main-btn {
-            width: 100%;
-            padding: 16px;
-            background: #1c6b4a;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 18px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .main-btn:hover {
-            background: #145237;
-            transform: translateY(-2px);
-        }
-
-        .language-switch {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-        }
-
-        .language-switch button {
-            background: transparent;
-            color: #1c6b4a;
-            border: 2px solid #1c6b4a;
-            padding: 6px 12px;
             font-size: 13px;
-            border-radius: 6px;
-            cursor: pointer;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 8px;
+            letter-spacing: 0.3px;
+        }
+
+        .input-wrap {
+            position: relative;
+        }
+
+        .input-wrap input {
+            width: 100%;
+            padding: 16px 18px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            font-size: 16px;
+            font-family: inherit;
+            color: #ffffff;
             transition: all 0.3s ease;
         }
 
-        .language-switch button:hover {
-            background: #1c6b4a;
-            color: white;
+        .input-wrap input::placeholder {
+            color: rgba(255, 255, 255, 0.25);
         }
 
-        @media (max-width: 500px) {
-            .card {
-                margin: 20px;
-                padding: 30px;
+        .input-wrap input:focus {
+            outline: none;
+            border-color: rgba(16, 185, 129, 0.5);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+        }
+
+        /* Button */
+        .submit-btn {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            color: #fff;
+            background: linear-gradient(135deg, #10b981, #059669);
+            transition: all 0.3s ease;
+            letter-spacing: 0.3px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.3);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Shimmer animation on button */
+        .submit-btn::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            animation: shimmer 3s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 520px) {
+            .card-inner {
+                padding: 36px 28px;
+                border-radius: 20px;
+            }
+
+            h1 {
+                font-size: 24px;
             }
         }
-
     </style>
 </head>
 <body>
 
+<div class="particles" id="particles"></div>
+
 <div class="card">
+    <div class="card-inner">
+        <div class="badge">
+            <span class="badge-dot"></span>
+            Disponible
+        </div>
 
-    <div class="language-switch">
-        <button id="langBtn" onclick="toggleLanguage()">Cambiar a Inglés</button>
+        <h1>{{ event.name }}</h1>
+
+        <div class="subtitle">
+            Ingresa tu nombre completo para descargar tu certificado de participacion.
+        </div>
+
+        <form method="post" action="{% url 'download_certificate' slug=event.slug %}">
+            {% csrf_token %}
+
+            <div class="form-group">
+                <label>Nombre y apellido</label>
+                <div class="input-wrap">
+                    <input type="text" name="full_name" required
+                           placeholder="Ej: Juan Perez"
+                           autocomplete="name">
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn">
+                Descargar certificado
+            </button>
+        </form>
     </div>
 
-    <h1>{{ event.name }}</h1>
-
-    <div class="subtitle" id="subtitle">
-        Descargá tu certificado de participación
+    <div class="footer">
+        Certificado generado automaticamente
     </div>
-
-    <div class="instructions" id="instructions">
-        Ingresá tu nombre y presioná “Descargar certificado” para generarlo automáticamente.
-    </div>
-
-    <form method="post" action="{% url 'download_certificate' slug=event.slug %}">
-        {% csrf_token %}
-
-        <label id="nameLabel">Nombre y Apellido</label>
-        <input type="text" name="full_name" required>
-
-        <button type="submit" class="main-btn" id="downloadBtn">
-            Descargar certificado
-        </button>
-    </form>
-
 </div>
 
 <script>
-    let currentLang = "es";
-
-    function toggleLanguage() {
-        const btn = document.getElementById("langBtn");
-
-        if (currentLang === "es") {
-
-            document.getElementById("subtitle").innerText =
-                "Download your participation certificate";
-
-            document.getElementById("nameLabel").innerText =
-                "Full Name";
-
-            document.getElementById("downloadBtn").innerText =
-                "Download Certificate";
-
-            document.getElementById(“instructions”).innerText =
-                'Enter your name and press “Download Certificate” to generate it automatically.';
-
-            btn.innerText = "Cambiar a Español";
-
-            currentLang = "en";
-
-        } else {
-
-            document.getElementById("subtitle").innerText =
-                "Descargá tu certificado de participación";
-
-            document.getElementById("nameLabel").innerText =
-                "Nombre y Apellido";
-
-            document.getElementById("downloadBtn").innerText =
-                "Descargar certificado";
-
-            document.getElementById(“instructions”).innerText =
-                'Ingresá tu nombre y presioná “Descargar certificado” para generarlo automáticamente.';
-
-            btn.innerText = "Cambiar a Inglés";
-
-            currentLang = "es";
-        }
+// Generate floating particles
+(function() {
+    var container = document.getElementById('particles');
+    for (var i = 0; i < 30; i++) {
+        var p = document.createElement('div');
+        p.className = 'particle';
+        p.style.left = Math.random() * 100 + '%';
+        p.style.animationDuration = (8 + Math.random() * 12) + 's';
+        p.style.animationDelay = Math.random() * 10 + 's';
+        p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
+        p.style.opacity = 0.1 + Math.random() * 0.3;
+        container.appendChild(p);
     }
+})();
 </script>
 
 </body>

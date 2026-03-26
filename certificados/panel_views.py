@@ -180,10 +180,10 @@ def panel_template_form(request, pk=None):
     if request.method == "POST":
         event_id = request.POST.get("event")
         mode = request.POST.get("mode", "coords")
-        page_number = int(request.POST.get("page_number", 0))
-        x = float(request.POST.get("x", 100))
-        y = float(request.POST.get("y", 300))
-        font_size = float(request.POST.get("font_size", 28))
+        page_number = int(request.POST.get("page_number") or 0)
+        x = float(request.POST.get("x") or 100)
+        y = float(request.POST.get("y") or 300)
+        font_size = float(request.POST.get("font_size") or 28)
         align = request.POST.get("align", "center")
         field_name = request.POST.get("field_name", "full_name")
 
@@ -241,58 +241,55 @@ def panel_template_delete(request, pk):
 
 @login_required(login_url="panel_login")
 def panel_template_preview(request, pk):
-    """Generate a preview image (PNG) with a sample name overlaid on the PDF."""
+    """Generate a preview PNG showing name position on a coordinate grid."""
     import traceback
-    from PIL import Image
-    from reportlab.lib.units import inch
 
     template = get_object_or_404(CertificateTemplate, pk=pk)
     sample_name = request.GET.get("name", "Juan Perez")
     fmt = request.GET.get("fmt", "png")
 
+    # Safe defaults for potentially empty fields
+    tpl_x = float(template.x or 100)
+    tpl_y = float(template.y or 300)
+    tpl_font_size = float(template.font_size or 28)
+    tpl_align = (template.align or "center").lower()
+    tpl_page = int(template.page_number or 0)
+
     try:
         reader = PdfReader(template.pdf.path)
 
-        page_index = template.page_number
-        if page_index >= len(reader.pages):
+        if tpl_page >= len(reader.pages):
             return HttpResponse("Pagina invalida", status=400)
 
-        page = reader.pages[page_index]
-        width = float(page.mediabox.width)
-        height = float(page.mediabox.height)
+        page = reader.pages[tpl_page]
+        pdf_w = float(page.mediabox.width)
+        pdf_h = float(page.mediabox.height)
 
-        # Build the full PDF with overlay
+        # Build overlay
+        packet = BytesIO()
+        c = canvas.Canvas(packet, pagesize=(pdf_w, pdf_h))
+        c.setFont("Helvetica", tpl_font_size)
+
+        tw = pdfmetrics.stringWidth(sample_name, "Helvetica", tpl_font_size)
+        if tpl_align == "center":
+            draw_x = tpl_x - tw / 2.0
+        elif tpl_align == "right":
+            draw_x = tpl_x - tw
+        else:
+            draw_x = tpl_x
+
+        c.drawString(draw_x, tpl_y, sample_name)
+        c.save()
+        packet.seek(0)
+
+        overlay = PdfReader(packet)
         writer = PdfWriter()
         for i, p in enumerate(reader.pages):
-            if i == page_index:
-                packet = BytesIO()
-                c = canvas.Canvas(packet, pagesize=(width, height))
-                font_name = "Helvetica"
-                font_size = float(template.font_size)
-                c.setFont(font_name, font_size)
-
-                x = float(template.x)
-                y = float(template.y)
-                align_val = (template.align or "center").lower()
-                text_width = pdfmetrics.stringWidth(sample_name, font_name, font_size)
-
-                if align_val == "center":
-                    draw_x = x - (text_width / 2.0)
-                elif align_val == "right":
-                    draw_x = x - text_width
-                else:
-                    draw_x = x
-
-                c.drawString(draw_x, y, sample_name)
-                c.save()
-
-                packet.seek(0)
-                overlay_pdf = PdfReader(packet)
-                p.merge_page(overlay_pdf.pages[0])
-
+            if i == tpl_page:
+                p.merge_page(overlay.pages[0])
             writer.add_page(p)
 
-        # If fmt=pdf, return the PDF directly (for "Abrir PDF" button)
+        # Return PDF directly
         if fmt == "pdf":
             out = BytesIO()
             writer.write(out)
@@ -301,77 +298,83 @@ def panel_template_preview(request, pk):
             response["Content-Disposition"] = 'inline; filename="preview.pdf"'
             return response
 
-        # For PNG: use reportlab to render to image via a simple approach
-        # We'll create the PDF and use the raw PDF as a downloadable preview
-        # Since PIL can't render PDFs, we create a visual representation
-        # showing the certificate dimensions with the name positioned
+        # Return PNG: coordinate grid with name position marker
+        from PIL import Image, ImageDraw, ImageFont
 
-        scale = 1.5  # pixels per PDF point
-        img_w = int(width * scale)
-        img_h = int(height * scale)
-
-        # Create white background image
+        scale = 1.5
+        img_w = int(pdf_w * scale)
+        img_h = int(pdf_h * scale)
         img = Image.new("RGB", (img_w, img_h), (255, 255, 255))
-
-        # Try to use the PDF's first page as background if possible
-        # For now, draw a representation with the name position
-        from PIL import ImageDraw, ImageFont
-
         draw = ImageDraw.Draw(img)
 
-        # Draw border
+        # Border
         draw.rectangle([0, 0, img_w - 1, img_h - 1], outline=(200, 200, 200), width=2)
 
-        # Draw grid lines every 100 PDF points
-        for gx in range(0, int(width), 100):
+        # Grid every 100pt
+        for gx in range(0, int(pdf_w) + 1, 100):
             px = int(gx * scale)
-            draw.line([(px, 0), (px, img_h)], fill=(240, 240, 240))
-            draw.text((px + 2, 2), str(gx), fill=(180, 180, 180))
-        for gy in range(0, int(height), 100):
+            draw.line([(px, 0), (px, img_h)], fill=(235, 235, 235))
+            draw.text((px + 3, 3), str(gx), fill=(170, 170, 170))
+        for gy in range(0, int(pdf_h) + 1, 100):
             py = img_h - int(gy * scale)
-            draw.line([(0, py), (img_w, py)], fill=(240, 240, 240))
-            draw.text((2, py + 2), str(gy), fill=(180, 180, 180))
+            draw.line([(0, py), (img_w, py)], fill=(235, 235, 235))
+            draw.text((3, py - 14), str(gy), fill=(170, 170, 170))
 
-        # Draw crosshair at X, Y position
-        px = int(float(template.x) * scale)
-        py = img_h - int(float(template.y) * scale)
-        draw.line([(px - 20, py), (px + 20, py)], fill=(239, 68, 68), width=2)
-        draw.line([(px, py - 20), (px, py + 20)], fill=(239, 68, 68), width=2)
+        # Crosshair at name position
+        cx = int(tpl_x * scale)
+        cy = img_h - int(tpl_y * scale)
+        draw.line([(cx - 25, cy), (cx + 25, cy)], fill=(239, 68, 68), width=3)
+        draw.line([(cx, cy - 25), (cx, cy + 25)], fill=(239, 68, 68), width=3)
+        draw.ellipse([(cx - 6, cy - 6), (cx + 6, cy + 6)], outline=(239, 68, 68), width=2)
 
-        # Draw the sample name
+        # Name text
+        pil_font_size = max(10, int(tpl_font_size * scale * 0.7))
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", int(font_size * scale * 0.75))
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", pil_font_size)
         except (OSError, IOError):
-            font = ImageFont.load_default()
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", pil_font_size)
+            except (OSError, IOError):
+                font = ImageFont.load_default()
 
-        # Calculate text position based on alignment
-        text_bbox = draw.textbbox((0, 0), sample_name, font=font)
-        tw = text_bbox[2] - text_bbox[0]
+        bbox = draw.textbbox((0, 0), sample_name, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
 
-        align_val = (template.align or "center").lower()
-        if align_val == "center":
-            tx = px - tw // 2
-        elif align_val == "right":
-            tx = px - tw
+        if tpl_align == "center":
+            tx = cx - text_w // 2
+        elif tpl_align == "right":
+            tx = cx - text_w
         else:
-            tx = px
+            tx = cx
 
-        draw.text((tx, py - (text_bbox[3] - text_bbox[1])), sample_name, fill=(34, 60, 80), font=font)
+        draw.text((tx, cy - text_h), sample_name, fill=(30, 60, 90), font=font)
 
-        # Label
-        draw.text((10, img_h - 30), f"PDF: {int(width)}x{int(height)}pt | Pos: X={template.x} Y={template.y} | Fuente: {template.font_size}pt", fill=(150, 150, 150))
+        # Info bar
+        info = f"PDF: {int(pdf_w)}x{int(pdf_h)}pt  |  X={tpl_x}  Y={tpl_y}  |  Fuente: {tpl_font_size}pt  |  Alineacion: {tpl_align}"
+        draw.rectangle([(0, img_h - 28), (img_w, img_h)], fill=(245, 245, 245))
+        draw.text((10, img_h - 22), info, fill=(120, 120, 120))
 
         out = BytesIO()
         img.save(out, format="PNG")
         out.seek(0)
-
         return HttpResponse(out.read(), content_type="image/png")
 
     except Exception:
-        return HttpResponse(
-            f"<pre>Error generando preview:\n{traceback.format_exc()}</pre>",
-            status=500,
-        )
+        # Return error as a visible PNG image so it shows inline
+        from PIL import Image, ImageDraw
+        img = Image.new("RGB", (600, 200), (255, 240, 240))
+        draw = ImageDraw.Draw(img)
+        error_text = traceback.format_exc()
+        lines = error_text.strip().split("\n")
+        y_pos = 10
+        for line in lines[-5:]:
+            draw.text((10, y_pos), line[:80], fill=(180, 0, 0))
+            y_pos += 20
+        out = BytesIO()
+        img.save(out, format="PNG")
+        out.seek(0)
+        return HttpResponse(out.read(), content_type="image/png")
 
 
 # ── Logs ──────────────────────────────────────────────

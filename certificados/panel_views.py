@@ -241,25 +241,30 @@ def panel_template_delete(request, pk):
 
 @login_required(login_url="panel_login")
 def panel_template_preview(request, pk):
-    """Generate a preview PDF with a sample name."""
+    """Generate a preview image (PNG) with a sample name overlaid on the PDF."""
     import traceback
+    from PIL import Image
+    from reportlab.lib.units import inch
 
     template = get_object_or_404(CertificateTemplate, pk=pk)
     sample_name = request.GET.get("name", "Juan Perez")
+    fmt = request.GET.get("fmt", "png")
 
     try:
         reader = PdfReader(template.pdf.path)
-        writer = PdfWriter()
 
         page_index = template.page_number
         if page_index >= len(reader.pages):
             return HttpResponse("Pagina invalida", status=400)
 
-        for i, page in enumerate(reader.pages):
-            if i == page_index:
-                width = float(page.mediabox.width)
-                height = float(page.mediabox.height)
+        page = reader.pages[page_index]
+        width = float(page.mediabox.width)
+        height = float(page.mediabox.height)
 
+        # Build the full PDF with overlay
+        writer = PdfWriter()
+        for i, p in enumerate(reader.pages):
+            if i == page_index:
                 packet = BytesIO()
                 c = canvas.Canvas(packet, pagesize=(width, height))
                 font_name = "Helvetica"
@@ -268,12 +273,12 @@ def panel_template_preview(request, pk):
 
                 x = float(template.x)
                 y = float(template.y)
-                align = (template.align or "center").lower()
+                align_val = (template.align or "center").lower()
                 text_width = pdfmetrics.stringWidth(sample_name, font_name, font_size)
 
-                if align == "center":
+                if align_val == "center":
                     draw_x = x - (text_width / 2.0)
-                elif align == "right":
+                elif align_val == "right":
                     draw_x = x - text_width
                 else:
                     draw_x = x
@@ -283,18 +288,85 @@ def panel_template_preview(request, pk):
 
                 packet.seek(0)
                 overlay_pdf = PdfReader(packet)
-                page.merge_page(overlay_pdf.pages[0])
+                p.merge_page(overlay_pdf.pages[0])
 
-            writer.add_page(page)
+            writer.add_page(p)
+
+        # If fmt=pdf, return the PDF directly (for "Abrir PDF" button)
+        if fmt == "pdf":
+            out = BytesIO()
+            writer.write(out)
+            out.seek(0)
+            response = HttpResponse(out.read(), content_type="application/pdf")
+            response["Content-Disposition"] = 'inline; filename="preview.pdf"'
+            return response
+
+        # For PNG: use reportlab to render to image via a simple approach
+        # We'll create the PDF and use the raw PDF as a downloadable preview
+        # Since PIL can't render PDFs, we create a visual representation
+        # showing the certificate dimensions with the name positioned
+
+        scale = 1.5  # pixels per PDF point
+        img_w = int(width * scale)
+        img_h = int(height * scale)
+
+        # Create white background image
+        img = Image.new("RGB", (img_w, img_h), (255, 255, 255))
+
+        # Try to use the PDF's first page as background if possible
+        # For now, draw a representation with the name position
+        from PIL import ImageDraw, ImageFont
+
+        draw = ImageDraw.Draw(img)
+
+        # Draw border
+        draw.rectangle([0, 0, img_w - 1, img_h - 1], outline=(200, 200, 200), width=2)
+
+        # Draw grid lines every 100 PDF points
+        for gx in range(0, int(width), 100):
+            px = int(gx * scale)
+            draw.line([(px, 0), (px, img_h)], fill=(240, 240, 240))
+            draw.text((px + 2, 2), str(gx), fill=(180, 180, 180))
+        for gy in range(0, int(height), 100):
+            py = img_h - int(gy * scale)
+            draw.line([(0, py), (img_w, py)], fill=(240, 240, 240))
+            draw.text((2, py + 2), str(gy), fill=(180, 180, 180))
+
+        # Draw crosshair at X, Y position
+        px = int(float(template.x) * scale)
+        py = img_h - int(float(template.y) * scale)
+        draw.line([(px - 20, py), (px + 20, py)], fill=(239, 68, 68), width=2)
+        draw.line([(px, py - 20), (px, py + 20)], fill=(239, 68, 68), width=2)
+
+        # Draw the sample name
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", int(font_size * scale * 0.75))
+        except (OSError, IOError):
+            font = ImageFont.load_default()
+
+        # Calculate text position based on alignment
+        text_bbox = draw.textbbox((0, 0), sample_name, font=font)
+        tw = text_bbox[2] - text_bbox[0]
+
+        align_val = (template.align or "center").lower()
+        if align_val == "center":
+            tx = px - tw // 2
+        elif align_val == "right":
+            tx = px - tw
+        else:
+            tx = px
+
+        draw.text((tx, py - (text_bbox[3] - text_bbox[1])), sample_name, fill=(34, 60, 80), font=font)
+
+        # Label
+        draw.text((10, img_h - 30), f"PDF: {int(width)}x{int(height)}pt | Pos: X={template.x} Y={template.y} | Fuente: {template.font_size}pt", fill=(150, 150, 150))
 
         out = BytesIO()
-        writer.write(out)
+        img.save(out, format="PNG")
         out.seek(0)
 
-        response = HttpResponse(out.read(), content_type="application/pdf")
-        response["Content-Disposition"] = 'inline; filename="preview.pdf"'
-        response["X-Frame-Options"] = "SAMEORIGIN"
-        return response
+        return HttpResponse(out.read(), content_type="image/png")
+
     except Exception:
         return HttpResponse(
             f"<pre>Error generando preview:\n{traceback.format_exc()}</pre>",

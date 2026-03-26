@@ -45,22 +45,22 @@
             <div class="form-row">
                 <div class="form-group">
                     <label>Pagina (desde 0)</label>
-                    <input type="number" name="page_number" id="pageNum" value="{{ template.page_number|default:'0' }}" min="0">
+                    <input type="number" name="page_number" id="pageNum" value="{{ tpl_page_number }}" min="0">
                 </div>
                 <div class="form-group">
                     <label>Tamano de fuente</label>
-                    <input type="number" name="font_size" id="fontSize" value="{{ template.font_size|default:'28' }}" step="0.5" min="1" oninput="renderPreview()">
+                    <input type="number" name="font_size" id="fontSize" value="{{ tpl_font_size }}" step="0.5" min="1" oninput="renderPreview()">
                 </div>
             </div>
 
             <div class="form-row-3">
                 <div class="form-group">
                     <label>X (horizontal)</label>
-                    <input type="number" name="x" id="inputX" value="{{ template.x|default:'100' }}" step="1" oninput="renderPreview()">
+                    <input type="number" name="x" id="inputX" value="{{ tpl_x }}" step="1" oninput="renderPreview()">
                 </div>
                 <div class="form-group">
                     <label>Y (vertical)</label>
-                    <input type="number" name="y" id="inputY" value="{{ template.y|default:'300' }}" step="1" oninput="renderPreview()">
+                    <input type="number" name="y" id="inputY" value="{{ tpl_y }}" step="1" oninput="renderPreview()">
                 </div>
                 <div class="form-group">
                     <label>Alineacion</label>

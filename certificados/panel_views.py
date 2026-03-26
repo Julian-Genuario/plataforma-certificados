@@ -223,10 +223,19 @@ def panel_template_form(request, pk=None):
         id__in=CertificateTemplate.objects.values_list("event_id", flat=True)
     )
 
+    # Ensure fields have usable values for the form
+    defaults = {
+        "tpl_x": float(template.x) if template and template.x else 100,
+        "tpl_y": float(template.y) if template and template.y else 300,
+        "tpl_font_size": float(template.font_size) if template and template.font_size else 28,
+        "tpl_page_number": int(template.page_number) if template and template.page_number else 0,
+    }
+
     return render(request, "panel/template_form.html", {
         "active_page": "templates",
         "template": template,
         "events_available": events_available,
+        **defaults,
     })
 
 

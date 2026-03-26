@@ -241,54 +241,65 @@ def panel_template_delete(request, pk):
 
 @login_required(login_url="panel_login")
 def panel_template_preview(request, pk):
-    """Generate a preview PDF with a sample name and return as image-like PDF."""
+    """Generate a preview PDF with a sample name."""
+    import traceback
+
     template = get_object_or_404(CertificateTemplate, pk=pk)
     sample_name = request.GET.get("name", "Juan Perez")
 
-    reader = PdfReader(template.pdf.path)
-    writer = PdfWriter()
+    try:
+        reader = PdfReader(template.pdf.path)
+        writer = PdfWriter()
 
-    page_index = template.page_number
-    if page_index >= len(reader.pages):
-        return HttpResponse("Pagina invalida", status=400)
+        page_index = template.page_number
+        if page_index >= len(reader.pages):
+            return HttpResponse("Pagina invalida", status=400)
 
-    for i, page in enumerate(reader.pages):
-        if i == page_index:
-            width = float(page.mediabox.width)
-            height = float(page.mediabox.height)
+        for i, page in enumerate(reader.pages):
+            if i == page_index:
+                width = float(page.mediabox.width)
+                height = float(page.mediabox.height)
 
-            packet = BytesIO()
-            c = canvas.Canvas(packet, pagesize=(width, height))
-            font_name = "Helvetica"
-            font_size = float(template.font_size)
-            c.setFont(font_name, font_size)
+                packet = BytesIO()
+                c = canvas.Canvas(packet, pagesize=(width, height))
+                font_name = "Helvetica"
+                font_size = float(template.font_size)
+                c.setFont(font_name, font_size)
 
-            x = float(template.x)
-            y = float(template.y)
-            align = (template.align or "center").lower()
-            text_width = pdfmetrics.stringWidth(sample_name, font_name, font_size)
+                x = float(template.x)
+                y = float(template.y)
+                align = (template.align or "center").lower()
+                text_width = pdfmetrics.stringWidth(sample_name, font_name, font_size)
 
-            if align == "center":
-                draw_x = x - (text_width / 2.0)
-            elif align == "right":
-                draw_x = x - text_width
-            else:
-                draw_x = x
+                if align == "center":
+                    draw_x = x - (text_width / 2.0)
+                elif align == "right":
+                    draw_x = x - text_width
+                else:
+                    draw_x = x
 
-            c.drawString(draw_x, y, sample_name)
-            c.save()
+                c.drawString(draw_x, y, sample_name)
+                c.save()
 
-            packet.seek(0)
-            overlay_pdf = PdfReader(packet)
-            page.merge_page(overlay_pdf.pages[0])
+                packet.seek(0)
+                overlay_pdf = PdfReader(packet)
+                page.merge_page(overlay_pdf.pages[0])
 
-        writer.add_page(page)
+            writer.add_page(page)
 
-    out = BytesIO()
-    writer.write(out)
-    out.seek(0)
+        out = BytesIO()
+        writer.write(out)
+        out.seek(0)
 
-    return FileResponse(out, content_type="application/pdf", filename="preview.pdf")
+        response = HttpResponse(out.read(), content_type="application/pdf")
+        response["Content-Disposition"] = 'inline; filename="preview.pdf"'
+        response["X-Frame-Options"] = "SAMEORIGIN"
+        return response
+    except Exception:
+        return HttpResponse(
+            f"<pre>Error generando preview:\n{traceback.format_exc()}</pre>",
+            status=500,
+        )
 
 
 # ── Logs ──────────────────────────────────────────────

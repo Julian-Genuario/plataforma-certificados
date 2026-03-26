@@ -1,18 +1,193 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <title>{{ event.name }}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-</head>
-<body style="font-family: Arial; max-width: 520px; margin: 40px auto;">
-  <h2>{{ event.name }}</h2>
+    <meta charset="UTF-8">
+    <title>{{ event.name }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <form method="post" action="{% url 'download_certificate' event.slug %}">
-    {% csrf_token %}
-    <label>Nombre y apellido</label><br/>
-    <input name="full_name" required style="width:100%; padding:10px; margin:10px 0; font-size:16px;" />
-    <button type="submit" style="padding:10px 14px; font-size:16px;">Descargar certificado</button>
-  </form>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #0f3d2e, #1c6b4a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .card {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+        h1 {
+            margin: 0 0 15px 0;
+            font-size: 26px;
+            color: #0f3d2e;
+        }
+
+        .subtitle {
+            font-size: 15px;
+            color: #555;
+            margin-bottom: 20px;
+        }
+
+        .instructions {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #1c6b4a;
+        }
+
+        .main-btn {
+            width: 100%;
+            padding: 16px;
+            background: #1c6b4a;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .main-btn:hover {
+            background: #145237;
+            transform: translateY(-2px);
+        }
+
+        .language-switch {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+
+        .language-switch button {
+            background: transparent;
+            color: #1c6b4a;
+            border: 2px solid #1c6b4a;
+            padding: 6px 12px;
+            font-size: 13px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .language-switch button:hover {
+            background: #1c6b4a;
+            color: white;
+        }
+
+        @media (max-width: 500px) {
+            .card {
+                margin: 20px;
+                padding: 30px;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="card">
+
+    <div class="language-switch">
+        <button id="langBtn" onclick="toggleLanguage()">Cambiar a Inglés</button>
+    </div>
+
+    <h1>{{ event.name }}</h1>
+
+    <div class="subtitle" id="subtitle">
+        Descargá tu certificado de participación
+    </div>
+
+    <div class="instructions" id="instructions">
+        Ingresá tu nombre y presioná “Descargar certificado” para generarlo automáticamente.
+    </div>
+
+    <form method="post" action="{% url 'download_certificate' slug=event.slug %}">
+        {% csrf_token %}
+
+        <label id="nameLabel">Nombre y Apellido</label>
+        <input type="text" name="full_name" required>
+
+        <button type="submit" class="main-btn" id="downloadBtn">
+            Descargar certificado
+        </button>
+    </form>
+
+</div>
+
+<script>
+    let currentLang = "es";
+
+    function toggleLanguage() {
+        const btn = document.getElementById("langBtn");
+
+        if (currentLang === "es") {
+
+            document.getElementById("subtitle").innerText =
+                "Download your participation certificate";
+
+            document.getElementById("nameLabel").innerText =
+                "Full Name";
+
+            document.getElementById("downloadBtn").innerText =
+                "Download Certificate";
+
+            document.getElementById(“instructions”).innerText =
+                'Enter your name and press “Download Certificate” to generate it automatically.';
+
+            btn.innerText = "Cambiar a Español";
+
+            currentLang = "en";
+
+        } else {
+
+            document.getElementById("subtitle").innerText =
+                "Descargá tu certificado de participación";
+
+            document.getElementById("nameLabel").innerText =
+                "Nombre y Apellido";
+
+            document.getElementById("downloadBtn").innerText =
+                "Descargar certificado";
+
+            document.getElementById(“instructions”).innerText =
+                'Ingresá tu nombre y presioná “Descargar certificado” para generarlo automáticamente.';
+
+            btn.innerText = "Cambiar a Inglés";
+
+            currentLang = "es";
+        }
+    }
+</script>
+
 </body>
 </html>

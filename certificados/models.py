@@ -19,14 +19,14 @@ class CertificateTemplate(models.Model):
     pdf = models.FileField(upload_to="templates/")
     mode = models.CharField(max_length=10, choices=MODE_CHOICES, default="coords")
 
-    # coords
+    # Config para coords
     page_number = models.PositiveIntegerField(default=0)
     x = models.FloatField(default=100)
     y = models.FloatField(default=300)
     font_size = models.FloatField(default=28)
     align = models.CharField(max_length=10, default="center")  # left/center/right
 
-    # field
+    # Config para field
     field_name = models.CharField(max_length=100, blank=True, default="full_name")
 
     def __str__(self):

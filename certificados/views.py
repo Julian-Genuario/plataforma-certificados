@@ -14,25 +14,18 @@ def _get_client_ip(request):
     return request.META.get("REMOTE_ADDR")
 
 
-def event_page(request, slug):
-    event = get_object_or_404(Event, slug=slug, active=True)
-    return render(request, "certificados/event_page.html", {"event": event})
+def _build_certificate_response(event, full_name, request):
+    """Generate the certificate PDF for an event + name and return a FileResponse.
 
-
-def download_certificate(request, slug):
-    if request.method != "POST":
-        return HttpResponseBadRequest("Método no permitido.")
-
-    event = get_object_or_404(Event, slug=slug, active=True)
-    template = get_object_or_404(CertificateTemplate, event=event)
-
-    full_name = (request.POST.get("full_name") or "").strip()
+    Returns an HttpResponseBadRequest on validation errors.
+    """
     if not full_name:
         return HttpResponseBadRequest("Nombre vacío.")
     if len(full_name) > 80:
         return HttpResponseBadRequest("Nombre demasiado largo (máx 80).")
 
-    # Log de descarga
+    template = get_object_or_404(CertificateTemplate, event=event)
+
     DownloadLog.objects.create(
         event=event,
         name_entered=full_name,
@@ -40,7 +33,6 @@ def download_certificate(request, slug):
         user_agent=request.META.get("HTTP_USER_AGENT", ""),
     )
 
-    # Leer el PDF template
     reader = PdfReader(template.pdf.path)
     writer = PdfWriter()
 
@@ -48,13 +40,11 @@ def download_certificate(request, slug):
     if page_index >= len(reader.pages):
         return HttpResponseBadRequest("page_number inválido para este PDF.")
 
-    # Copiamos todas las páginas y en la página objetivo superponemos el texto
     for i, page in enumerate(reader.pages):
         if i == page_index:
             width = float(page.mediabox.width)
             height = float(page.mediabox.height)
 
-            # Overlay con reportlab
             packet = BytesIO()
             c = canvas.Canvas(packet, pagesize=(width, height))
 
@@ -92,3 +82,35 @@ def download_certificate(request, slug):
 
     filename = f"certificado-{event.slug}.pdf"
     return FileResponse(out, as_attachment=True, filename=filename)
+
+
+def home_page(request):
+    events = Event.objects.filter(active=True).order_by("name")
+    return render(request, "certificados/home.html", {"events": events})
+
+
+def download_from_home(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Método no permitido.")
+
+    slug = (request.POST.get("event_slug") or "").strip()
+    if not slug:
+        return HttpResponseBadRequest("Evento no seleccionado.")
+
+    event = get_object_or_404(Event, slug=slug, active=True)
+    full_name = (request.POST.get("full_name") or "").strip()
+    return _build_certificate_response(event, full_name, request)
+
+
+def event_page(request, slug):
+    event = get_object_or_404(Event, slug=slug, active=True)
+    return render(request, "certificados/event_page.html", {"event": event})
+
+
+def download_certificate(request, slug):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Método no permitido.")
+
+    event = get_object_or_404(Event, slug=slug, active=True)
+    full_name = (request.POST.get("full_name") or "").strip()
+    return _build_certificate_response(event, full_name, request)

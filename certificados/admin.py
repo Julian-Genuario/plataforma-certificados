@@ -12,6 +12,6 @@ class CertificateTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(DownloadLog)
 class DownloadLogAdmin(admin.ModelAdmin):
-    list_display = ("event", "name_entered", "created_at")
-    list_filter = ("event", "created_at")
+    list_display = ("event", "name_entered", "manual", "created_at")
+    list_filter = ("event", "manual", "created_at")
     search_fields = ("name_entered",)

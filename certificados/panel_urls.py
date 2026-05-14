@@ -20,6 +20,10 @@ urlpatterns = [
     path("templates/<int:pk>/eliminar/", v.panel_template_delete, name="panel_template_delete"),
     path("templates/<int:pk>/preview/", v.panel_template_preview, name="panel_template_preview"),
 
+    # Manual generation
+    path("generar/", v.panel_generate, name="panel_generate"),
+    path("generar/masivo/", v.panel_generate_bulk, name="panel_generate_bulk"),
+
     # Logs
     path("descargas/", v.panel_logs, name="panel_logs"),
     path("descargas/exportar/", v.panel_logs_export, name="panel_logs_export"),

@@ -39,6 +39,10 @@ class DownloadLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     ip = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True, default="")
+    manual = models.BooleanField(
+        default=False,
+        help_text="Generado manualmente desde el panel",
+    )
 
     def __str__(self):
         return f"{self.event.slug} - {self.name_entered}"

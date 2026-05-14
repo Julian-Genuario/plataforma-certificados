@@ -11,5 +11,15 @@ os.environ["DJANGO_DEBUG"] = "False"
 os.environ["DJANGO_ALLOWED_HOSTS"] = "genuariojulian.pythonanywhere.com"
 os.environ["CSRF_TRUSTED_ORIGINS"] = "https://genuariojulian.pythonanywhere.com"
 
+import django
+django.setup()
+try:
+    from django.core.management import call_command
+    call_command("migrate", "--noinput", verbosity=0)
+except Exception:
+    import logging
+    import traceback
+    logging.error("Auto-migrate failed:\n%s", traceback.format_exc())
+
 from django.core.wsgi import get_wsgi_application
 application = get_wsgi_application()

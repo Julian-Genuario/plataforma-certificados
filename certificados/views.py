@@ -14,31 +14,17 @@ def _get_client_ip(request):
     return request.META.get("REMOTE_ADDR")
 
 
-def _build_certificate_response(event, full_name, request):
-    """Generate the certificate PDF for an event + name and return a FileResponse.
+def build_pdf_bytes(template, full_name):
+    """Generate the certificate PDF bytes for the given template + name.
 
-    Returns an HttpResponseBadRequest on validation errors.
+    Raises ValueError on bad page number.
     """
-    if not full_name:
-        return HttpResponseBadRequest("Nombre vacío.")
-    if len(full_name) > 80:
-        return HttpResponseBadRequest("Nombre demasiado largo (máx 80).")
-
-    template = get_object_or_404(CertificateTemplate, event=event)
-
-    DownloadLog.objects.create(
-        event=event,
-        name_entered=full_name,
-        ip=_get_client_ip(request),
-        user_agent=request.META.get("HTTP_USER_AGENT", ""),
-    )
-
     reader = PdfReader(template.pdf.path)
     writer = PdfWriter()
 
     page_index = template.page_number
     if page_index >= len(reader.pages):
-        return HttpResponseBadRequest("page_number inválido para este PDF.")
+        raise ValueError("page_number inválido para este PDF.")
 
     for i, page in enumerate(reader.pages):
         if i == page_index:
@@ -78,10 +64,36 @@ def _build_certificate_response(event, full_name, request):
 
     out = BytesIO()
     writer.write(out)
-    out.seek(0)
+    return out.getvalue()
+
+
+def _build_certificate_response(event, full_name, request, manual=False):
+    """Validate, log and generate the certificate PDF as a FileResponse.
+
+    Returns an HttpResponseBadRequest on validation errors.
+    """
+    if not full_name:
+        return HttpResponseBadRequest("Nombre vacío.")
+    if len(full_name) > 80:
+        return HttpResponseBadRequest("Nombre demasiado largo (máx 80).")
+
+    template = get_object_or_404(CertificateTemplate, event=event)
+
+    DownloadLog.objects.create(
+        event=event,
+        name_entered=full_name,
+        ip=_get_client_ip(request),
+        user_agent=request.META.get("HTTP_USER_AGENT", ""),
+        manual=manual,
+    )
+
+    try:
+        pdf_bytes = build_pdf_bytes(template, full_name)
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
 
     filename = f"certificado-{event.slug}.pdf"
-    return FileResponse(out, as_attachment=True, filename=filename)
+    return FileResponse(BytesIO(pdf_bytes), as_attachment=True, filename=filename)
 
 
 def home_page(request):

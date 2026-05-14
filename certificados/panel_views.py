@@ -1,4 +1,5 @@
 import csv
+import zipfile
 from io import BytesIO
 from datetime import timedelta
 
@@ -18,9 +19,10 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 
 from .models import Event, CertificateTemplate, DownloadLog
+from .views import build_pdf_bytes, _build_certificate_response, _get_client_ip
 
 
-# ── Auth ──────────────────────────────────────────────
+# ── Auth ─────────────────────────────────────
 
 def panel_login(request):
     if request.user.is_authenticated:
@@ -43,7 +45,7 @@ def panel_logout_view(request):
     return redirect("panel_login")
 
 
-# ── Dashboard ─────────────────────────────────────────
+# ── Dashboard ──────────────────────────────────
 
 @login_required(login_url="panel_login")
 def panel_dashboard(request):
@@ -56,7 +58,6 @@ def panel_dashboard(request):
     total_downloads = DownloadLog.objects.count()
     today_downloads = DownloadLog.objects.filter(created_at__gte=today_start).count()
 
-    # Downloads per day (last 7 days)
     daily_downloads = (
         DownloadLog.objects
         .filter(created_at__gte=week_ago)
@@ -66,7 +67,6 @@ def panel_dashboard(request):
         .order_by("day")
     )
 
-    # Build chart data for all 7 days
     chart_labels = []
     chart_data = []
     daily_map = {str(d["day"]): d["count"] for d in daily_downloads}
@@ -75,10 +75,7 @@ def panel_dashboard(request):
         chart_labels.append(day.strftime("%d/%m"))
         chart_data.append(daily_map.get(str(day), 0))
 
-    # Recent downloads
     recent_logs = DownloadLog.objects.select_related("event").order_by("-created_at")[:10]
-
-    # Latest event
     latest_event = Event.objects.order_by("-id").first()
 
     return render(request, "panel/dashboard.html", {
@@ -94,7 +91,7 @@ def panel_dashboard(request):
     })
 
 
-# ── Events ────────────────────────────────────────────
+# ── Events ──────────────────────────────────────
 
 @login_required(login_url="panel_login")
 def panel_events(request):
@@ -158,7 +155,7 @@ def panel_event_delete(request, pk):
     return redirect("panel_events")
 
 
-# ── Templates ─────────────────────────────────────────
+# ── Templates ──────────────────────────────────
 
 @login_required(login_url="panel_login")
 def panel_templates(request):
@@ -223,7 +220,6 @@ def panel_template_form(request, pk=None):
         id__in=CertificateTemplate.objects.values_list("event_id", flat=True)
     )
 
-    # Ensure fields have usable values for the form
     defaults = {
         "tpl_x": float(template.x) if template and template.x else 100,
         "tpl_y": float(template.y) if template and template.y else 300,
@@ -257,7 +253,6 @@ def panel_template_preview(request, pk):
     sample_name = request.GET.get("name", "Juan Perez")
     fmt = request.GET.get("fmt", "png")
 
-    # Safe defaults for potentially empty fields
     tpl_x = float(template.x or 100)
     tpl_y = float(template.y or 300)
     tpl_font_size = float(template.font_size or 28)
@@ -274,7 +269,6 @@ def panel_template_preview(request, pk):
         pdf_w = float(page.mediabox.width)
         pdf_h = float(page.mediabox.height)
 
-        # Build overlay
         packet = BytesIO()
         c = canvas.Canvas(packet, pagesize=(pdf_w, pdf_h))
         c.setFont("Helvetica", tpl_font_size)
@@ -298,7 +292,6 @@ def panel_template_preview(request, pk):
                 p.merge_page(overlay.pages[0])
             writer.add_page(p)
 
-        # Return PDF directly
         if fmt == "pdf":
             out = BytesIO()
             writer.write(out)
@@ -307,7 +300,6 @@ def panel_template_preview(request, pk):
             response["Content-Disposition"] = 'inline; filename="preview.pdf"'
             return response
 
-        # Return PNG: coordinate grid with name position marker
         from PIL import Image, ImageDraw, ImageFont
 
         scale = 1.5
@@ -316,10 +308,8 @@ def panel_template_preview(request, pk):
         img = Image.new("RGB", (img_w, img_h), (255, 255, 255))
         draw = ImageDraw.Draw(img)
 
-        # Border
         draw.rectangle([0, 0, img_w - 1, img_h - 1], outline=(200, 200, 200), width=2)
 
-        # Grid every 100pt
         for gx in range(0, int(pdf_w) + 1, 100):
             px = int(gx * scale)
             draw.line([(px, 0), (px, img_h)], fill=(235, 235, 235))
@@ -329,14 +319,12 @@ def panel_template_preview(request, pk):
             draw.line([(0, py), (img_w, py)], fill=(235, 235, 235))
             draw.text((3, py - 14), str(gy), fill=(170, 170, 170))
 
-        # Crosshair at name position
         cx = int(tpl_x * scale)
         cy = img_h - int(tpl_y * scale)
         draw.line([(cx - 25, cy), (cx + 25, cy)], fill=(239, 68, 68), width=3)
         draw.line([(cx, cy - 25), (cx, cy + 25)], fill=(239, 68, 68), width=3)
         draw.ellipse([(cx - 6, cy - 6), (cx + 6, cy + 6)], outline=(239, 68, 68), width=2)
 
-        # Name text
         pil_font_size = max(10, int(tpl_font_size * scale * 0.7))
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", pil_font_size)
@@ -359,7 +347,6 @@ def panel_template_preview(request, pk):
 
         draw.text((tx, cy - text_h), sample_name, fill=(30, 60, 90), font=font)
 
-        # Info bar
         info = f"PDF: {int(pdf_w)}x{int(pdf_h)}pt  |  X={tpl_x}  Y={tpl_y}  |  Fuente: {tpl_font_size}pt  |  Alineacion: {tpl_align}"
         draw.rectangle([(0, img_h - 28), (img_w, img_h)], fill=(245, 245, 245))
         draw.text((10, img_h - 22), info, fill=(120, 120, 120))
@@ -370,7 +357,6 @@ def panel_template_preview(request, pk):
         return HttpResponse(out.read(), content_type="image/png")
 
     except Exception:
-        # Return error as a visible PNG image so it shows inline
         from PIL import Image, ImageDraw
         img = Image.new("RGB", (600, 200), (255, 240, 240))
         draw = ImageDraw.Draw(img)
@@ -386,17 +372,108 @@ def panel_template_preview(request, pk):
         return HttpResponse(out.read(), content_type="image/png")
 
 
-# ── Logs ──────────────────────────────────────────────
+# ── Manual generation ──────────────────────────────
+
+@login_required(login_url="panel_login")
+def panel_generate(request):
+    """Page with two forms: individual and bulk. POST = individual generation."""
+    events = Event.objects.order_by("name")
+
+    if request.method == "POST":
+        event_id = request.POST.get("event")
+        full_name = (request.POST.get("full_name") or "").strip()
+        event = get_object_or_404(Event, pk=event_id)
+        return _build_certificate_response(event, full_name, request, manual=True)
+
+    return render(request, "panel/generate.html", {
+        "active_page": "generate",
+        "events": events,
+    })
+
+
+@login_required(login_url="panel_login")
+def panel_generate_bulk(request):
+    """POST only: generate a ZIP of certificates for a list of names."""
+    if request.method != "POST":
+        return redirect("panel_generate")
+
+    event_id = request.POST.get("event")
+    event = get_object_or_404(Event, pk=event_id)
+    template = get_object_or_404(CertificateTemplate, event=event)
+
+    names_raw = request.POST.get("names", "")
+    uploaded = request.FILES.get("names_file")
+
+    raw_lines = []
+    if uploaded:
+        try:
+            content = uploaded.read().decode("utf-8", errors="ignore")
+        except Exception:
+            content = ""
+        raw_lines.extend(content.splitlines())
+    if names_raw:
+        raw_lines.extend(names_raw.splitlines())
+
+    names = []
+    for raw in raw_lines:
+        n = raw.strip().strip(",").strip()
+        if not n:
+            continue
+        if len(n) > 80:
+            continue
+        names.append(n)
+
+    if not names:
+        messages.error(request, "No se encontraron nombres válidos.")
+        return redirect("panel_generate")
+
+    MAX_NAMES = 500
+    if len(names) > MAX_NAMES:
+        messages.error(request, f"Máximo {MAX_NAMES} nombres por lote. Recibiste {len(names)}.")
+        return redirect("panel_generate")
+
+    zip_buffer = BytesIO()
+    seen = {}
+    user_agent = request.META.get("HTTP_USER_AGENT", "")
+    client_ip = _get_client_ip(request)
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in names:
+            try:
+                pdf_bytes = build_pdf_bytes(template, name)
+            except ValueError:
+                continue
+
+            DownloadLog.objects.create(
+                event=event,
+                name_entered=name,
+                ip=client_ip,
+                user_agent=user_agent,
+                manual=True,
+            )
+
+            base = slugify(name) or "certificado"
+            seen[base] = seen.get(base, 0) + 1
+            filename = f"{base}.pdf" if seen[base] == 1 else f"{base}-{seen[base]}.pdf"
+            zf.writestr(filename, pdf_bytes)
+
+    zip_buffer.seek(0)
+    response = HttpResponse(zip_buffer.getvalue(), content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="certificados-{event.slug}.zip"'
+    return response
+
+
+# ── Logs ────────────────────────────────────────
 
 @login_required(login_url="panel_login")
 def panel_logs(request):
     logs = DownloadLog.objects.select_related("event").order_by("-created_at")
 
-    # Filters
     event_filter = request.GET.get("event")
     search = request.GET.get("search", "").strip()
     date_from = request.GET.get("date_from")
     date_to = request.GET.get("date_to")
+    tipo_filter = request.GET.get("tipo", "")
 
     if event_filter:
         logs = logs.filter(event_id=event_filter)
@@ -406,10 +483,13 @@ def panel_logs(request):
         logs = logs.filter(created_at__date__gte=date_from)
     if date_to:
         logs = logs.filter(created_at__date__lte=date_to)
+    if tipo_filter == "manual":
+        logs = logs.filter(manual=True)
+    elif tipo_filter == "publico":
+        logs = logs.filter(manual=False)
 
     events = Event.objects.order_by("name")
 
-    # Simple pagination
     page = int(request.GET.get("page", 1))
     per_page = 25
     total = logs.count()
@@ -425,6 +505,7 @@ def panel_logs(request):
         "search": search,
         "date_from": date_from or "",
         "date_to": date_to or "",
+        "tipo_filter": tipo_filter,
         "page": page,
         "total_pages": total_pages,
         "total": total,
@@ -439,6 +520,7 @@ def panel_logs_export(request):
     search = request.GET.get("search", "").strip()
     date_from = request.GET.get("date_from")
     date_to = request.GET.get("date_to")
+    tipo_filter = request.GET.get("tipo", "")
 
     if event_filter:
         logs = logs.filter(event_id=event_filter)
@@ -448,11 +530,15 @@ def panel_logs_export(request):
         logs = logs.filter(created_at__date__gte=date_from)
     if date_to:
         logs = logs.filter(created_at__date__lte=date_to)
+    if tipo_filter == "manual":
+        logs = logs.filter(manual=True)
+    elif tipo_filter == "publico":
+        logs = logs.filter(manual=False)
 
     def generate():
-        writer = csv.writer(row_buffer := BytesIO(), dialect="excel")
-        # Header
-        writer.writerow(["Evento", "Nombre", "Fecha", "IP", "User Agent"])
+        row_buffer = BytesIO()
+        writer = csv.writer(row_buffer, dialect="excel")
+        writer.writerow(["Evento", "Nombre", "Tipo", "Fecha", "IP", "User Agent"])
         yield row_buffer.getvalue().decode("utf-8")
         row_buffer.seek(0)
         row_buffer.truncate()
@@ -461,6 +547,7 @@ def panel_logs_export(request):
             writer.writerow([
                 log.event.name,
                 log.name_entered,
+                "Manual" if log.manual else "Publico",
                 log.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 log.ip or "",
                 log.user_agent,
@@ -474,7 +561,7 @@ def panel_logs_export(request):
     return response
 
 
-# ── Users ─────────────────────────────────────────────
+# ── Users ───────────────────────────────────────
 
 @login_required(login_url="panel_login")
 def panel_users(request):

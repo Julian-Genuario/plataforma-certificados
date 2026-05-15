@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse, StreamingHttpResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -18,8 +18,13 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 
-from .models import Event, CertificateTemplate, DownloadLog
+from .models import Event, CertificateTemplate, DownloadLog, Attendee
 from .views import build_pdf_bytes, _build_certificate_response, _get_client_ip
+from .attendees_io import (
+    parse_uploaded_file,
+    parse_text,
+    ParseError,
+)
 
 
 # ── Auth ─────────────────────────────────────
@@ -637,3 +642,112 @@ def panel_user_delete(request, pk):
             user_obj.delete()
             messages.success(request, "Usuario eliminado.")
     return redirect("panel_users")
+
+
+# ── Attendees ───────────────────────────────────
+
+@login_required(login_url="panel_login")
+def panel_attendees(request, event_pk):
+    event = get_object_or_404(Event, pk=event_pk)
+    search = (request.GET.get("search") or "").strip()
+    attendees = event.attendees.all()
+    if search:
+        attendees = attendees.filter(
+            Q(full_name__icontains=search) | Q(email__icontains=search)
+        )
+    total = attendees.count()
+    return render(request, "panel/attendees.html", {
+        "active_page": "events",
+        "event": event,
+        "attendees": attendees[:500],
+        "search": search,
+        "total": total,
+        "truncated": total > 500,
+    })
+
+
+@login_required(login_url="panel_login")
+def panel_attendees_import(request, event_pk):
+    event = get_object_or_404(Event, pk=event_pk)
+
+    if request.method == "POST":
+        uploaded = request.FILES.get("file")
+        pasted = request.POST.get("pasted_text", "")
+        replace_existing = request.POST.get("replace_existing") == "on"
+
+        clean = []
+        errors = []
+        try:
+            if uploaded:
+                file_clean, file_errors = parse_uploaded_file(uploaded)
+                clean.extend(file_clean)
+                errors.extend(file_errors)
+            if pasted.strip():
+                text_clean, text_errors = parse_text(pasted)
+                clean.extend(text_clean)
+                errors.extend(text_errors)
+        except ParseError as exc:
+            messages.error(request, str(exc))
+            return redirect("panel_attendees_import", event_pk=event.pk)
+
+        if not clean and not errors:
+            messages.error(request, "No se cargaron datos. Subí un archivo o pegá la lista.")
+            return redirect("panel_attendees_import", event_pk=event.pk)
+
+        if replace_existing:
+            event.attendees.all().delete()
+
+        existing_emails = set(
+            event.attendees.values_list("email_normalized", flat=True)
+        )
+
+        created = 0
+        duplicated = 0
+        from .models import normalize_email
+        for name, email in clean:
+            email_norm = normalize_email(email)
+            if email_norm in existing_emails:
+                duplicated += 1
+                continue
+            existing_emails.add(email_norm)
+            Attendee.objects.create(event=event, full_name=name, email=email)
+            created += 1
+
+        msg = f"{created} inscriptos importados."
+        if duplicated:
+            msg += f" {duplicated} duplicados omitidos."
+        if errors:
+            msg += f" {len(errors)} filas con errores."
+        messages.success(request, msg)
+
+        if errors:
+            request.session[f"attendee_errors_{event.pk}"] = errors[:200]
+
+        return redirect("panel_attendees", event_pk=event.pk)
+
+    session_errors = request.session.pop(f"attendee_errors_{event.pk}", None)
+    return render(request, "panel/attendees_import.html", {
+        "active_page": "events",
+        "event": event,
+        "errors": session_errors,
+    })
+
+
+@login_required(login_url="panel_login")
+def panel_attendee_delete(request, event_pk, pk):
+    event = get_object_or_404(Event, pk=event_pk)
+    attendee = get_object_or_404(Attendee, pk=pk, event=event)
+    if request.method == "POST":
+        attendee.delete()
+        messages.success(request, "Inscripto eliminado.")
+    return redirect("panel_attendees", event_pk=event.pk)
+
+
+@login_required(login_url="panel_login")
+def panel_attendees_clear(request, event_pk):
+    event = get_object_or_404(Event, pk=event_pk)
+    if request.method == "POST":
+        count = event.attendees.count()
+        event.attendees.all().delete()
+        messages.success(request, f"{count} inscriptos eliminados.")
+    return redirect("panel_attendees", event_pk=event.pk)

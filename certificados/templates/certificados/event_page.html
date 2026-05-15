@@ -259,8 +259,20 @@
         <h1>{{ event.name }}</h1>
 
         <div class="subtitle">
-            Ingresa tu nombre completo para descargar tu certificado de participacion.
+            {% if requires_validation %}
+                Ingresá tu nombre completo y email tal como te inscribiste para descargar tu certificado.
+            {% else %}
+                Ingresá tu nombre completo para descargar tu certificado de participación.
+            {% endif %}
         </div>
+
+        {% if messages %}
+            {% for message in messages %}
+            <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:14px 18px;border-radius:12px;font-size:14px;margin-bottom:24px;">
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endif %}
 
         <form method="post" action="{% url 'download_certificate' slug=event.slug %}">
             {% csrf_token %}
@@ -270,9 +282,22 @@
                 <div class="input-wrap">
                     <input type="text" name="full_name" required
                            placeholder="Ej: Juan Perez"
-                           autocomplete="name">
+                           autocomplete="name"
+                           maxlength="200">
                 </div>
             </div>
+
+            {% if requires_validation %}
+            <div class="form-group">
+                <label>Email</label>
+                <div class="input-wrap">
+                    <input type="email" name="email" required
+                           placeholder="tu@email.com"
+                           autocomplete="email"
+                           maxlength="200">
+                </div>
+            </div>
+            {% endif %}
 
             <button type="submit" class="submit-btn">
                 Descargar certificado

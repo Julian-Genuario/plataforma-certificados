@@ -48,6 +48,7 @@
                                     {% if event.active %}&#10006;{% else %}&#10004;{% endif %}
                                 </button>
                             </form>
+                            <a href="{% url 'panel_attendees' event_pk=event.pk %}" class="btn btn-secondary btn-sm">Inscriptos</a>
                             <a href="{% url 'panel_event_edit' pk=event.pk %}" class="btn btn-secondary btn-sm">Editar</a>
                             <button class="btn btn-danger btn-sm" onclick="confirmDelete('{% url 'panel_event_delete' pk=event.pk %}', '{{ event.name }}')">Eliminar</button>
                         </div>

@@ -1,13 +1,21 @@
 from io import BytesIO
 
+from django.contrib import messages
 from django.http import FileResponse, HttpResponseBadRequest
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 
-from .models import Event, CertificateTemplate, DownloadLog
+from .models import (
+    Event,
+    CertificateTemplate,
+    DownloadLog,
+    Attendee,
+    normalize_text,
+    normalize_email,
+)
 
 
 def _get_client_ip(request):
@@ -67,15 +75,49 @@ def build_pdf_bytes(template, full_name):
     return out.getvalue()
 
 
-def _build_certificate_response(event, full_name, request, manual=False):
+def _find_attendee(event, full_name, email):
+    """Return the Attendee matching name+email for this event, or None.
+
+    If the event has no attendees loaded, returns the sentinel string
+    "free" to indicate no validation is required.
+    """
+    if not event.attendees.exists():
+        return "free"
+
+    name_norm = normalize_text(full_name)
+    email_norm = normalize_email(email)
+    if not name_norm or not email_norm:
+        return None
+    return event.attendees.filter(
+        full_name_normalized=name_norm,
+        email_normalized=email_norm,
+    ).first()
+
+
+def _build_certificate_response(event, full_name, request, manual=False, email="", failure_redirect=None):
     """Validate, log and generate the certificate PDF as a FileResponse.
 
-    Returns an HttpResponseBadRequest on validation errors.
+    When attendees are loaded for the event, requires name + email to match
+    one of the registered attendees. Manual generation from the panel skips
+    that check.
     """
     if not full_name:
         return HttpResponseBadRequest("Nombre vacío.")
-    if len(full_name) > 80:
-        return HttpResponseBadRequest("Nombre demasiado largo (máx 80).")
+    if len(full_name) > 200:
+        return HttpResponseBadRequest("Nombre demasiado largo (máx 200).")
+
+    if not manual:
+        match = _find_attendee(event, full_name, email)
+        if match is None:
+            messages.error(
+                request,
+                "No te encontramos en la lista de inscriptos. Verificá nombre y email.",
+            )
+            if failure_redirect == "home":
+                return redirect("home")
+            return redirect("event_page", slug=event.slug)
+        if isinstance(match, Attendee):
+            full_name = match.full_name
 
     template = get_object_or_404(CertificateTemplate, event=event)
 
@@ -111,12 +153,19 @@ def download_from_home(request):
 
     event = get_object_or_404(Event, slug=slug, active=True)
     full_name = (request.POST.get("full_name") or "").strip()
-    return _build_certificate_response(event, full_name, request)
+    email = (request.POST.get("email") or "").strip()
+    return _build_certificate_response(
+        event, full_name, request, email=email, failure_redirect="home"
+    )
 
 
 def event_page(request, slug):
     event = get_object_or_404(Event, slug=slug, active=True)
-    return render(request, "certificados/event_page.html", {"event": event})
+    requires_validation = event.attendees.exists()
+    return render(request, "certificados/event_page.html", {
+        "event": event,
+        "requires_validation": requires_validation,
+    })
 
 
 def download_certificate(request, slug):
@@ -125,4 +174,5 @@ def download_certificate(request, slug):
 
     event = get_object_or_404(Event, slug=slug, active=True)
     full_name = (request.POST.get("full_name") or "").strip()
-    return _build_certificate_response(event, full_name, request)
+    email = (request.POST.get("email") or "").strip()
+    return _build_certificate_response(event, full_name, request, email=email)

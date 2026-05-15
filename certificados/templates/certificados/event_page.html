@@ -259,7 +259,7 @@
         <h1>{{ event.name }}</h1>
 
         <div class="subtitle">
-            {% if requires_validation %}
+            {% if event.require_email %}
                 Ingresá tu nombre completo y email tal como te inscribiste para descargar tu certificado.
             {% else %}
                 Ingresá tu nombre completo para descargar tu certificado de participación.
@@ -287,7 +287,7 @@
                 </div>
             </div>
 
-            {% if requires_validation %}
+            {% if event.require_email %}
             <div class="form-group">
                 <label>Email</label>
                 <div class="input-wrap">
@@ -297,6 +297,10 @@
                            maxlength="200">
                 </div>
             </div>
+            {% endif %}
+
+            {% if event.info_text %}
+            <div style="margin:4px 0 24px;padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;font-size:13px;line-height:1.55;color:rgba(255,255,255,0.7);white-space:pre-line;">{{ event.info_text }}</div>
             {% endif %}
 
             <button type="submit" class="submit-btn">

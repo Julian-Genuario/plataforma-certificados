@@ -22,6 +22,15 @@ class Event(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
     active = models.BooleanField(default=True)
+    require_email = models.BooleanField(
+        default=True,
+        help_text="Si está activado, el form pide email obligatorio y, si hay inscriptos cargados, valida nombre+email contra la lista.",
+    )
+    info_text = models.TextField(
+        blank=True,
+        default="",
+        help_text="Texto informativo que se muestra en la página pública del evento, debajo del email.",
+    )
 
     def __str__(self):
         return self.name

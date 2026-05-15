@@ -115,6 +115,8 @@ def panel_event_form(request, pk=None):
         name = request.POST.get("name", "").strip()
         slug = request.POST.get("slug", "").strip() or slugify(name)
         active = request.POST.get("active") == "on"
+        require_email = request.POST.get("require_email") == "on"
+        info_text = request.POST.get("info_text", "").strip()
 
         if not name:
             messages.error(request, "El nombre es obligatorio.")
@@ -127,10 +129,18 @@ def panel_event_form(request, pk=None):
             event.name = name
             event.slug = slug
             event.active = active
+            event.require_email = require_email
+            event.info_text = info_text
             event.save()
             messages.success(request, "Evento actualizado.")
         else:
-            event = Event.objects.create(name=name, slug=slug, active=active)
+            event = Event.objects.create(
+                name=name,
+                slug=slug,
+                active=active,
+                require_email=require_email,
+                info_text=info_text,
+            )
             messages.success(request, "Evento creado.")
 
         return redirect("panel_events")

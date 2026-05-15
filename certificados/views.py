@@ -76,14 +76,7 @@ def build_pdf_bytes(template, full_name):
 
 
 def _find_attendee(event, full_name, email):
-    """Return the Attendee matching name+email for this event, or None.
-
-    If the event has no attendees loaded, returns the sentinel string
-    "free" to indicate no validation is required.
-    """
-    if not event.attendees.exists():
-        return "free"
-
+    """Return the matching Attendee for this event, or None if not found."""
     name_norm = normalize_text(full_name)
     email_norm = normalize_email(email)
     if not name_norm or not email_norm:
@@ -97,26 +90,38 @@ def _find_attendee(event, full_name, email):
 def _build_certificate_response(event, full_name, request, manual=False, email="", failure_redirect=None):
     """Validate, log and generate the certificate PDF as a FileResponse.
 
-    When attendees are loaded for the event, requires name + email to match
-    one of the registered attendees. Manual generation from the panel skips
-    that check.
+    Validation rules (skipped when manual=True):
+    - If event.require_email is True: email is mandatory.
+    - If event has attendees loaded: (name, email) must match a registered
+      attendee. Match is case- and accent-insensitive.
+    - Otherwise: free download.
     """
     if not full_name:
         return HttpResponseBadRequest("Nombre vacío.")
     if len(full_name) > 200:
         return HttpResponseBadRequest("Nombre demasiado largo (máx 200).")
 
+    def _fail(msg):
+        messages.error(request, msg)
+        if failure_redirect == "home":
+            return redirect("home")
+        return redirect("event_page", slug=event.slug)
+
     if not manual:
-        match = _find_attendee(event, full_name, email)
-        if match is None:
-            messages.error(
-                request,
-                "No te encontramos en la lista de inscriptos. Verificá nombre y email.",
-            )
-            if failure_redirect == "home":
-                return redirect("home")
-            return redirect("event_page", slug=event.slug)
-        if isinstance(match, Attendee):
+        has_attendees = event.attendees.exists()
+
+        if event.require_email and not email:
+            return _fail("Tenés que ingresar tu email.")
+
+        if has_attendees:
+            if not event.require_email:
+                # Lista cargada pero no se pide email: solo validamos por nombre
+                name_norm = normalize_text(full_name)
+                match = event.attendees.filter(full_name_normalized=name_norm).first()
+            else:
+                match = _find_attendee(event, full_name, email)
+            if match is None:
+                return _fail("No te encontramos en la lista de inscriptos. Verificá los datos.")
             full_name = match.full_name
 
     template = get_object_or_404(CertificateTemplate, event=event)
@@ -161,11 +166,7 @@ def download_from_home(request):
 
 def event_page(request, slug):
     event = get_object_or_404(Event, slug=slug, active=True)
-    requires_validation = event.attendees.exists()
-    return render(request, "certificados/event_page.html", {
-        "event": event,
-        "requires_validation": requires_validation,
-    })
+    return render(request, "certificados/event_page.html", {"event": event})
 
 
 def download_certificate(request, slug):

@@ -24,7 +24,11 @@ urlpatterns = [
     path("generar/", v.panel_generate, name="panel_generate"),
     path("generar/masivo/", v.panel_generate_bulk, name="panel_generate_bulk"),
 
-    # Attendees
+    # Attendees (global)
+    path("inscriptos/", v.panel_attendees_all, name="panel_attendees_all"),
+    path("inscriptos/importar/", v.panel_attendees_import_all, name="panel_attendees_import_all"),
+
+    # Attendees (per event)
     path("eventos/<int:event_pk>/inscriptos/", v.panel_attendees, name="panel_attendees"),
     path("eventos/<int:event_pk>/inscriptos/importar/", v.panel_attendees_import, name="panel_attendees_import"),
     path("eventos/<int:event_pk>/inscriptos/limpiar/", v.panel_attendees_clear, name="panel_attendees_clear"),

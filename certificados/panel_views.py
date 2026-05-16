@@ -667,7 +667,7 @@ def panel_attendees(request, event_pk):
         )
     total = attendees.count()
     return render(request, "panel/attendees.html", {
-        "active_page": "events",
+        "active_page": "attendees",
         "event": event,
         "attendees": attendees[:500],
         "search": search,
@@ -676,68 +676,80 @@ def panel_attendees(request, event_pk):
     })
 
 
+def _do_attendees_import(request, event):
+    """Process POST data and import attendees for the given event.
+
+    Returns (created, duplicated, errors) tuple. Caller is responsible for
+    showing messages and redirecting.
+    """
+    from .models import normalize_email
+
+    uploaded = request.FILES.get("file")
+    pasted = request.POST.get("pasted_text", "")
+    replace_existing = request.POST.get("replace_existing") == "on"
+
+    clean = []
+    errors = []
+    if uploaded:
+        file_clean, file_errors = parse_uploaded_file(uploaded)
+        clean.extend(file_clean)
+        errors.extend(file_errors)
+    if pasted.strip():
+        text_clean, text_errors = parse_text(pasted)
+        clean.extend(text_clean)
+        errors.extend(text_errors)
+
+    if replace_existing:
+        event.attendees.all().delete()
+
+    existing_emails = set(event.attendees.values_list("email_normalized", flat=True))
+
+    created = 0
+    duplicated = 0
+    for name, email in clean:
+        email_norm = normalize_email(email)
+        if email_norm in existing_emails:
+            duplicated += 1
+            continue
+        existing_emails.add(email_norm)
+        Attendee.objects.create(event=event, full_name=name, email=email)
+        created += 1
+
+    return created, duplicated, errors
+
+
+def _summarize_import(request, event, created, duplicated, errors):
+    msg = f"{created} inscriptos importados."
+    if duplicated:
+        msg += f" {duplicated} duplicados omitidos."
+    if errors:
+        msg += f" {len(errors)} filas con errores."
+    messages.success(request, msg)
+    if errors:
+        request.session[f"attendee_errors_{event.pk}"] = errors[:200]
+
+
 @login_required(login_url="panel_login")
 def panel_attendees_import(request, event_pk):
     event = get_object_or_404(Event, pk=event_pk)
 
     if request.method == "POST":
-        uploaded = request.FILES.get("file")
-        pasted = request.POST.get("pasted_text", "")
-        replace_existing = request.POST.get("replace_existing") == "on"
-
-        clean = []
-        errors = []
         try:
-            if uploaded:
-                file_clean, file_errors = parse_uploaded_file(uploaded)
-                clean.extend(file_clean)
-                errors.extend(file_errors)
-            if pasted.strip():
-                text_clean, text_errors = parse_text(pasted)
-                clean.extend(text_clean)
-                errors.extend(text_errors)
+            created, duplicated, errors = _do_attendees_import(request, event)
         except ParseError as exc:
             messages.error(request, str(exc))
             return redirect("panel_attendees_import", event_pk=event.pk)
 
-        if not clean and not errors:
+        if not created and not duplicated and not errors:
             messages.error(request, "No se cargaron datos. Subí un archivo o pegá la lista.")
             return redirect("panel_attendees_import", event_pk=event.pk)
 
-        if replace_existing:
-            event.attendees.all().delete()
-
-        existing_emails = set(
-            event.attendees.values_list("email_normalized", flat=True)
-        )
-
-        created = 0
-        duplicated = 0
-        from .models import normalize_email
-        for name, email in clean:
-            email_norm = normalize_email(email)
-            if email_norm in existing_emails:
-                duplicated += 1
-                continue
-            existing_emails.add(email_norm)
-            Attendee.objects.create(event=event, full_name=name, email=email)
-            created += 1
-
-        msg = f"{created} inscriptos importados."
-        if duplicated:
-            msg += f" {duplicated} duplicados omitidos."
-        if errors:
-            msg += f" {len(errors)} filas con errores."
-        messages.success(request, msg)
-
-        if errors:
-            request.session[f"attendee_errors_{event.pk}"] = errors[:200]
-
+        _summarize_import(request, event, created, duplicated, errors)
         return redirect("panel_attendees", event_pk=event.pk)
 
     session_errors = request.session.pop(f"attendee_errors_{event.pk}", None)
     return render(request, "panel/attendees_import.html", {
-        "active_page": "events",
+        "active_page": "attendees",
         "event": event,
         "errors": session_errors,
     })
@@ -761,3 +773,71 @@ def panel_attendees_clear(request, event_pk):
         event.attendees.all().delete()
         messages.success(request, f"{count} inscriptos eliminados.")
     return redirect("panel_attendees", event_pk=event.pk)
+
+
+@login_required(login_url="panel_login")
+def panel_attendees_all(request):
+    """Global view: all attendees across events with filter by event and search."""
+    event_filter = request.GET.get("event") or ""
+    search = (request.GET.get("search") or "").strip()
+
+    qs = Attendee.objects.select_related("event").order_by("-created_at")
+    if event_filter:
+        qs = qs.filter(event_id=event_filter)
+    if search:
+        qs = qs.filter(
+            Q(full_name__icontains=search) | Q(email__icontains=search)
+        )
+
+    total = qs.count()
+    page = int(request.GET.get("page", 1) or 1)
+    per_page = 50
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(max(page, 1), total_pages)
+    attendees = qs[(page - 1) * per_page : page * per_page]
+
+    events = Event.objects.annotate(
+        attendee_count=Count("attendees"),
+    ).order_by("name")
+
+    return render(request, "panel/attendees_all.html", {
+        "active_page": "attendees",
+        "attendees": attendees,
+        "events": events,
+        "event_filter": event_filter,
+        "search": search,
+        "page": page,
+        "total_pages": total_pages,
+        "total": total,
+    })
+
+
+@login_required(login_url="panel_login")
+def panel_attendees_import_all(request):
+    """Global import: pick an event from a dropdown and upload."""
+    events = Event.objects.order_by("name")
+
+    if request.method == "POST":
+        event_id = request.POST.get("event")
+        if not event_id:
+            messages.error(request, "Elegí un evento.")
+            return redirect("panel_attendees_import_all")
+        event = get_object_or_404(Event, pk=event_id)
+
+        try:
+            created, duplicated, errors = _do_attendees_import(request, event)
+        except ParseError as exc:
+            messages.error(request, str(exc))
+            return redirect("panel_attendees_import_all")
+
+        if not created and not duplicated and not errors:
+            messages.error(request, "No se cargaron datos. Subí un archivo o pegá la lista.")
+            return redirect("panel_attendees_import_all")
+
+        _summarize_import(request, event, created, duplicated, errors)
+        return redirect("panel_attendees", event_pk=event.pk)
+
+    return render(request, "panel/attendees_import_all.html", {
+        "active_page": "attendees",
+        "events": events,
+    })
